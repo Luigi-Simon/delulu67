@@ -82,6 +82,7 @@ export default function MatchPage() {
   const [chestReward, setChestReward] = useState<{ chest: ChestType; cards: Card[] } | null>(null);
   const [showEndMatchConfirm, setShowEndMatchConfirm] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [damageAnimation, setDamageAnimation] = useState<{uid: string, value: number} | null>(null);
 
   // Auth listener
   useEffect(() => {
@@ -120,7 +121,6 @@ export default function MatchPage() {
         const data = snapshot.data() as MatchData;
         setMatchData({ ...data, matchId: snapshot.id });
         
-        // If match is finished, redirect after delay
         if (data.status === "finished") {
           setTimeout(() => {
             router.push("/dashboard");
@@ -410,7 +410,11 @@ export default function MatchPage() {
       return;
     }
 
-    if (!selectedTarget) {
+    // Auto-target opponent in 1v1, or use selected target in group
+    const opponent = matchData.participants.find(uid => uid !== user?.uid);
+    const targetUid = matchData.type === "duo" ? opponent : selectedTarget;
+
+    if (!targetUid) {
       showNotification("⚠️ Select a target first!");
       return;
     }
@@ -424,15 +428,19 @@ export default function MatchPage() {
     });
 
     const matchRef = doc(db, "matches", matchData.matchId);
-    const targetName = participantNames[selectedTarget] || selectedTarget;
+    const targetName = participantNames[targetUid] || targetUid;
     
     if (card.type === "attack") {
-      const targetHp = matchData.hp[selectedTarget] || 100;
+      const targetHp = matchData.hp[targetUid] || 100;
       const newHp = Math.max(0, targetHp - card.value);
       
+      // Show damage animation
+      setDamageAnimation({ uid: targetUid, value: card.value });
+      setTimeout(() => setDamageAnimation(null), 2000);
+      
       await updateDoc(matchRef, {
-        [`hp.${selectedTarget}`]: newHp,
-        [`alive.${selectedTarget}`]: newHp > 0,
+        [`hp.${targetUid}`]: newHp,
+        [`alive.${targetUid}`]: newHp > 0,
         eventSeq: increment(1),
         activityFeed: arrayUnion(`${userData.displayName} used ${card.emoji} ${card.name} on ${targetName} (-${card.value} HP)`)
       });
@@ -448,34 +456,13 @@ export default function MatchPage() {
     }
 
     showNotification(`✅ Played ${card.emoji} ${card.name}!`);
-    setSelectedTarget("");
+    if (matchData.type !== "duo") {
+      setSelectedTarget("");
+    }
   };
 
-  const drawNewCard = async () => {
-    if (!user || !userData) return;
-
-    if (userData.inventory.hand.length >= 3) {
-      showNotification("⚠️ Hand is full! Play a card first.");
-      return;
-    }
-
-    const collectionIds = Object.keys(userData.inventory.collectionCounts).filter(
-      id => userData.inventory.collectionCounts[id] > 0
-    );
-
-    if (collectionIds.length === 0) {
-      showNotification("⚠️ No cards in collection! Complete focus sessions to earn cards.");
-      return;
-    }
-
-    const randomCardId = collectionIds[Math.floor(Math.random() * collectionIds.length)];
-    
-    await updateDoc(doc(db, "users", user.uid), {
-      "inventory.hand": arrayUnion(randomCardId)
-    });
-
-    showNotification(`✅ Drew ${getCard(randomCardId)?.emoji} ${getCard(randomCardId)?.name}!`);
-  };
+  // Draw card is now handled automatically after completing study sessions
+  // This function is no longer used
 
   const copyMatchId = () => {
     if (matchData) {
@@ -497,9 +484,14 @@ export default function MatchPage() {
     </div>;
   }
 
+  // Get opponent for 1v1 (or first opponent in group)
+  const opponent = matchData.participants.find(uid => uid !== user?.uid);
+  const myHp = matchData.hp[user?.uid || ""] || 0;
+  const opponentHp = opponent ? (matchData.hp[opponent] || 0) : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-6">
-      {/* Chest Reward Modal */}
+      {/* All modals remain the same */}
       {showChestReward && chestReward && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-yellow-600 to-orange-600 rounded-lg p-8 max-w-md w-full border-4 border-yellow-400 animate-bounce">
@@ -530,7 +522,6 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Cancel Session Confirmation */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border-2 border-red-500">
@@ -558,7 +549,6 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* End Match Confirmation */}
       {showEndMatchConfirm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border-2 border-red-500">
@@ -582,7 +572,6 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Emote Panel */}
       {showEmotes && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
@@ -644,14 +633,12 @@ export default function MatchPage() {
         </div>
       )}
 
-      {/* Notification */}
       {notification && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-2xl z-50 animate-bounce">
           {notification}
         </div>
       )}
 
-      {/* Reward Notification */}
       {rewardCard && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-8 py-4 rounded-lg shadow-2xl animate-bounce z-50">
           <p className="text-2xl font-bold">🎉 Reward: {rewardCard.emoji} {rewardCard.name}</p>
@@ -659,7 +646,7 @@ export default function MatchPage() {
         </div>
       )}
       
-      {/* Header with back button */}
+      {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <button 
           onClick={leaveMatch}
@@ -694,93 +681,140 @@ export default function MatchPage() {
       </div>
 
       {/* Main Battle UI */}
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Match Info & Focus Session */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Match Info - Hidden during focus */}
-          {!activeSession && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-              <h2 className="text-2xl font-bold mb-4">🏆 Leaderboard</h2>
-              <div className="space-y-2">
-                {matchData.participants
-                  .sort((a, b) => (matchData.hp[b] || 0) - (matchData.hp[a] || 0))
-                  .map((uid, index) => (
-                  <div key={uid} className={`flex justify-between items-center p-4 rounded transition ${
-                    uid === user?.uid ? 'bg-blue-600/50 border-2 border-blue-400' : 'bg-black/30'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl font-bold text-gray-400">#{index + 1}</span>
-                      <div>
-                        <span className="font-bold">{participantNames[uid] || uid}</span>
-                        {uid === user?.uid && <span className="ml-2 text-yellow-400">(You)</span>}
-                        {activeSessions[uid] && (
-                          <div className="text-xs text-green-400 mt-1">
-                            🎯 Focusing ({activeSessions[uid].durationMin === 0.17 ? '10sec' : `${activeSessions[uid].durationMin}min`})
+      <div className="max-w-7xl mx-auto">
+        {activeSession ? (
+          /* Focus Session Full Screen */
+          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-12 border border-white/20 text-center">
+            <div className="mb-6">
+              <h3 className="text-3xl font-bold mb-2">📚 Focus Mode Active</h3>
+              <p className="text-gray-300">Battle features are disabled. Study hard to earn your reward!</p>
+            </div>
+            <div className="text-8xl font-bold mb-6 text-green-400">{sessionTimeRemaining}</div>
+            <p className="text-gray-300 text-xl mb-2">Session in progress... Stay focused!</p>
+            <p className="text-sm text-gray-400 mb-6">Duration: {activeSession.durationMin === 0.17 ? '10 seconds' : `${activeSession.durationMin} minutes`}</p>
+            <div className="max-w-md mx-auto">
+              <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-green-400 to-blue-500 animate-pulse" style={{width: '100%'}} />
+              </div>
+            </div>
+            <div className="mt-8 p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg max-w-md mx-auto">
+              <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can't do both!</p>
+              <p className="text-sm text-gray-300 mt-1">Complete this session to unlock battle features and earn a card reward.</p>
+            </div>
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              className="mt-6 bg-red-500/80 hover:bg-red-600 px-6 py-3 rounded-lg font-bold transition"
+            >
+              🛑 Stop Studying (No Rewards)
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left - Battle Cats Style Tower Defense */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Battlefield */}
+              <div className="bg-gradient-to-b from-blue-900 to-green-900 rounded-lg p-6 border-4 border-yellow-400 relative overflow-hidden" style={{minHeight: '400px'}}>
+                <h2 className="text-2xl font-bold mb-4 text-center text-yellow-300">🏰 BATTLEFIELD 🏰</h2>
+                
+                {/* Towers Container */}
+                <div className="flex justify-between items-end h-64 relative">
+                  {/* Your Tower (Left) */}
+                  <div className="flex flex-col items-center relative">
+                    <div className="text-sm font-bold mb-2 bg-blue-600 px-3 py-1 rounded-full">
+                      YOU
+                    </div>
+                    <div className="relative">
+                      {/* Tower */}
+                      <div className="text-9xl filter drop-shadow-lg" style={{
+                        opacity: myHp / 100
+                      }}>
+                        🏰
+                      </div>
+                      {/* HP Bar */}
+                      <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-32">
+                        <div className="text-center mb-1">
+                          <span className="text-2xl font-bold text-red-400">❤️ {myHp}</span>
+                        </div>
+                        <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden border-2 border-white">
+                          <div 
+                            className="h-full bg-gradient-to-r from-red-500 to-green-500 transition-all duration-500"
+                            style={{ width: `${myHp}%` }}
+                          />
+                        </div>
+                      </div>
+                      {myHp === 0 && (
+                        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+                          <span className="text-8xl">💀</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Battlefield Center */}
+                  <div className="flex-1 mx-8 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-yellow-300 font-bold text-4xl">VS</p>
+                    </div>
+                  </div>
+
+                  {/* Opponent Tower (Right) */}
+                  {opponent && (
+                    <div className="flex flex-col items-center relative">
+                      <div className="text-sm font-bold mb-2 bg-red-600 px-3 py-1 rounded-full">
+                        OPPONENT
+                      </div>
+                      <div className="relative">
+                        {/* Tower */}
+                        <div className="text-9xl filter drop-shadow-lg" style={{
+                          opacity: opponentHp / 100
+                        }}>
+                          🏰
+                        </div>
+                        {/* HP Bar */}
+                        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-32">
+                          <div className="text-center mb-1">
+                            <span className="text-2xl font-bold text-red-400">❤️ {opponentHp}</span>
+                          </div>
+                          <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden border-2 border-white">
+                            <div 
+                              className="h-full bg-gradient-to-r from-red-500 to-green-500 transition-all duration-500"
+                              style={{ width: `${opponentHp}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Damage Animation */}
+                        {damageAnimation && damageAnimation.uid === opponent && (
+                          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-full animate-bounce">
+                            <span className="text-5xl font-bold text-red-500">-{damageAnimation.value}</span>
+                          </div>
+                        )}
+                        {opponentHp === 0 && (
+                          <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+                            <span className="text-8xl">💀</span>
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-red-400 font-bold">❤️ {matchData.hp[uid] || 0} HP</div>
-                        <div className="w-32 h-2 bg-gray-700 rounded-full mt-1">
-                          <div 
-                            className="h-full bg-gradient-to-r from-red-500 to-green-500 rounded-full transition-all"
-                            style={{ width: `${matchData.hp[uid] || 0}%` }}
-                          />
-                        </div>
+                  )}
+                </div>
+
+                {/* Activity Feed at Bottom */}
+                <div className="mt-12 bg-black/50 p-4 rounded max-h-32 overflow-y-auto">
+                  <h3 className="font-bold mb-2 text-sm text-yellow-300">📜 Battle Log:</h3>
+                  <div className="space-y-1">
+                    {matchData.activityFeed.slice(-5).reverse().map((activity, idx) => (
+                      <div key={idx} className="text-xs text-gray-300 border-l-2 border-yellow-500 pl-2">
+                        {activity}
                       </div>
-                      {!matchData.alive[uid] && <span className="text-2xl">💀</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6">
-                <h3 className="font-bold mb-3 text-lg">📜 Activity Feed:</h3>
-                <div className="bg-black/30 p-4 rounded max-h-48 overflow-y-auto space-y-2">
-                  {matchData.activityFeed.slice(-10).reverse().map((activity, idx) => (
-                    <div key={idx} className="text-sm text-gray-300 border-l-2 border-blue-500 pl-3 py-1">
-                      {activity}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Focus Session */}
-          <div className={`bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20 ${activeSession ? 'lg:col-span-3' : ''}`}>
-            <h2 className="text-2xl font-bold mb-4">🎯 Focus Session</h2>
-            
-            {activeSession ? (
-              <div className="text-center">
-                <div className="mb-6">
-                  <h3 className="text-3xl font-bold mb-2">📚 Focus Mode Active</h3>
-                  <p className="text-gray-300">Battle features are disabled. Study hard to earn your reward!</p>
-                </div>
-                <div className="text-8xl font-bold mb-6 text-green-400">{sessionTimeRemaining}</div>
-                <p className="text-gray-300 text-xl mb-2">Session in progress... Stay focused!</p>
-                <p className="text-sm text-gray-400 mb-6">Duration: {activeSession.durationMin === 0.17 ? '10 seconds' : `${activeSession.durationMin} minutes`}</p>
-                <div className="max-w-md mx-auto">
-                  <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-green-400 to-blue-500 animate-pulse" style={{width: '100%'}} />
+                    ))}
                   </div>
                 </div>
-                <div className="mt-8 p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg">
-                  <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can't do both!</p>
-                  <p className="text-sm text-gray-300 mt-1">Complete this session to unlock battle features and earn a card reward.</p>
-                </div>
-                <button
-                  onClick={() => setShowCancelConfirm(true)}
-                  className="mt-6 bg-red-500/80 hover:bg-red-600 px-6 py-3 rounded-lg font-bold transition"
-                >
-                  🛑 Stop Studying (No Rewards)
-                </button>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-gray-300 mb-4">Choose your focus duration and earn rewards!</p>
+
+              {/* Focus Session */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
+                <h2 className="text-2xl font-bold mb-4">🎯 Focus Session</h2>
+                <p className="text-gray-300 mb-4">Study to earn card rewards!</p>
                 <div className="grid grid-cols-4 gap-3">
                   <button
                     onClick={() => setSelectedDuration(0.17)}
@@ -810,96 +844,88 @@ export default function MatchPage() {
                 </div>
                 <button
                   onClick={startFocusSession}
-                  className="w-full bg-green-500 px-4 py-3 rounded hover:bg-green-600 font-bold transition text-lg"
+                  className="w-full mt-4 bg-green-500 px-4 py-3 rounded hover:bg-green-600 font-bold transition text-lg"
                 >
                   🚀 Start Focus Session
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column - Cards - Hidden during focus */}
-        {!activeSession && (
-        <div className="space-y-6">
-          {/* Hand */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">🃏 Hand ({userData.inventory.hand.length}/3)</h2>
-              <button
-                onClick={drawNewCard}
-                disabled={userData.inventory.hand.length >= 3}
-                className="bg-blue-500 px-3 py-1 rounded text-sm hover:bg-blue-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition"
-              >
-                + Draw
-              </button>
             </div>
-            
-            <div className="space-y-3">
-              {userData.inventory.hand.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">No cards in hand. Draw a card!</p>
-              ) : (
-                userData.inventory.hand.map((cardId, idx) => {
-                  const card = getCard(cardId);
-                  if (!card) return null;
-                  
-                  return (
-                    <div key={idx} className={`p-4 rounded border-2 transition hover:scale-105 ${
-                      card.rarity === 'epic' ? 'bg-purple-900/50 border-purple-500' :
-                      card.rarity === 'rare' ? 'bg-blue-900/50 border-blue-500' :
-                      'bg-gray-800/50 border-gray-500'
-                    }`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="font-bold text-lg">{card.emoji} {card.name}</p>
-                          <p className="text-xs uppercase tracking-wide" style={{
-                            color: card.rarity === 'epic' ? '#a855f7' : card.rarity === 'rare' ? '#3b82f6' : '#9ca3af'
-                          }}>{card.rarity}</p>
-                        </div>
-                        <span className="text-3xl font-bold">{card.value}</span>
-                      </div>
-                      <p className="text-sm text-gray-300 mb-3">{card.description}</p>
+
+            {/* Right - Cards */}
+            <div className="space-y-6">
+              {/* Target Selection - Only show for group matches */}
+              {matchData.type === "group" && matchData.participants.length > 2 && (
+                <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
+                  <h2 className="text-xl font-bold mb-4">Target</h2>
+                  <div className="space-y-2">
+                    {matchData.participants.filter(uid => uid !== user?.uid && matchData.alive[uid]).map(uid => (
                       <button
-                        onClick={() => playCard(cardId)}
-                        disabled={!matchData}
-                        className="w-full bg-red-500 px-3 py-2 rounded text-sm hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition font-bold"
+                        key={uid}
+                        onClick={() => setSelectedTarget(uid)}
+                        className={`w-full px-4 py-3 rounded transition font-bold ${
+                          selectedTarget === uid ? "bg-red-500 scale-105" : "bg-gray-700 hover:bg-gray-600"
+                        }`}
                       >
-                        ⚡ Play Card
+                        {participantNames[uid] || uid} ({matchData.hp[uid]} HP)
                       </button>
-                    </div>
-                  );
-                })
+                    ))}
+                  </div>
+                  {selectedTarget && (
+                    <p className="text-green-400 text-sm mt-3 text-center">✓ Target Selected</p>
+                  )}
+                </div>
               )}
-            </div>
 
-            {userData.inventory.hand.length >= 3 && (
-              <p className="text-yellow-400 text-sm mt-3 text-center">⚠️ Hand full! Play a card first.</p>
-            )}
-          </div>
+              {/* Hand */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Hand ({userData.inventory.hand.length}/3)</h2>
+                  <span className="text-xs text-gray-400">Complete study sessions to draw cards</span>
+                </div>
+                
+                <div className="space-y-3">
+                  {userData.inventory.hand.length === 0 ? (
+                    <p className="text-gray-400 text-center py-8">No cards in hand. Complete a study session to earn cards!</p>
+                  ) : (
+                    userData.inventory.hand.map((cardId, idx) => {
+                      const card = getCard(cardId);
+                      if (!card) return null;
+                      
+                      return (
+                        <div key={idx} className={`p-4 rounded border-2 transition hover:scale-105 ${
+                          card.rarity === 'epic' ? 'bg-purple-900/50 border-purple-500' :
+                          card.rarity === 'rare' ? 'bg-blue-900/50 border-blue-500' :
+                          'bg-gray-800/50 border-gray-500'
+                        }`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-bold text-lg">{card.emoji} {card.name}</p>
+                              <p className="text-xs uppercase tracking-wide" style={{
+                                color: card.rarity === 'epic' ? '#a855f7' : card.rarity === 'rare' ? '#3b82f6' : '#9ca3af'
+                              }}>{card.rarity}</p>
+                            </div>
+                            <span className="text-3xl font-bold">{card.value}</span>
+                          </div>
+                          <p className="text-sm text-gray-300 mb-3">{card.description}</p>
+                          <button
+                            onClick={() => playCard(cardId)}
+                            disabled={!matchData}
+                            className="w-full bg-red-500 px-3 py-2 rounded text-sm hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition font-bold"
+                          >
+                            ⚡ Play Card
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
 
-          {/* Target Selection */}
-          {matchData.participants.length > 1 && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-              <h2 className="text-xl font-bold mb-4">🎯 Select Target</h2>
-              <div className="space-y-2">
-                {matchData.participants.filter(uid => uid !== user?.uid && matchData.alive[uid]).map(uid => (
-                  <button
-                    key={uid}
-                    onClick={() => setSelectedTarget(uid)}
-                    className={`w-full px-4 py-3 rounded transition font-bold ${
-                      selectedTarget === uid ? "bg-red-500 scale-105" : "bg-gray-700 hover:bg-gray-600"
-                    }`}
-                  >
-                    {participantNames[uid] || uid} ({matchData.hp[uid]} HP)
-                  </button>
-                ))}
+                {userData.inventory.hand.length >= 3 && (
+                  <p className="text-yellow-400 text-sm mt-3 text-center">Hand full! Play a card to make room.</p>
+                )}
               </div>
-              {selectedTarget && (
-                <p className="text-green-400 text-sm mt-3 text-center">✓ Target: {participantNames[selectedTarget]}</p>
-              )}
             </div>
-          )}
-        </div>
+          </div>
         )}
       </div>
     </div>
