@@ -132,13 +132,14 @@ export const CARDS: Record<string, Card> = {
 
 // Rarity Drop Rates based on focus session duration
 export const RARITY_TABLE = {
+  0.17: { common: 1.0, rare: 0.0, epic: 0.0 },   // 10 sec session (testing only - common only)
   20: { common: 0.75, rare: 0.20, epic: 0.05 },  // 20 min session
   40: { common: 0.60, rare: 0.30, epic: 0.10 },  // 40 min session
   67: { common: 0.45, rare: 0.35, epic: 0.20 }   // 67 min session (best odds)
 };
 
 // Get random card based on rarity weights
-export function drawCard(durationMin: 20 | 40 | 67): Card {
+export function drawCard(durationMin: 0.17 | 20 | 40 | 67): Card {
   const rarityWeights = RARITY_TABLE[durationMin];
   const rand = Math.random();
   

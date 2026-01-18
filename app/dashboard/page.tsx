@@ -55,7 +55,7 @@ interface FocusSessionData {
   sessionId: string;
   uid: string;
   matchId: string;
-  durationMin: 20 | 40 | 67;
+  durationMin: 0.17 | 20 | 40 | 67; // 0.17 min = 10 seconds
   startServerTime: any;
   endTime?: any;
   status: "running" | "completed" | "failed" | "cancelled";
@@ -78,7 +78,7 @@ export default function Dashboard() {
   const [showCreateMatch, setShowCreateMatch] = useState(false);
   const [matchType, setMatchType] = useState<"duo" | "group">("duo");
   const [joinMatchId, setJoinMatchId] = useState("");
-  const [selectedDuration, setSelectedDuration] = useState<20 | 40 | 67>(20);
+  const [selectedDuration, setSelectedDuration] = useState<0.17 | 20 | 40 | 67>(20);
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [rewardCard, setRewardCard] = useState<Card | null>(null);
   const [notification, setNotification] = useState<string>("");
@@ -86,6 +86,7 @@ export default function Dashboard() {
   const [showChestReward, setShowChestReward] = useState(false);
   const [chestReward, setChestReward] = useState<{ chest: ChestType; cards: Card[] } | null>(null);
   const [showEndMatchConfirm, setShowEndMatchConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Auth listener
   useEffect(() => {
@@ -409,12 +410,37 @@ export default function Dashboard() {
     
     // Add to activity feed
     if (userData) {
+      const displayDuration = selectedDuration === 0.17 ? '10sec' : `${selectedDuration}min`;
       await updateDoc(doc(db, "matches", currentMatch.matchId), {
-        activityFeed: arrayUnion(`${userData.displayName} started a ${selectedDuration}min focus session 🎯`)
+        activityFeed: arrayUnion(`${userData.displayName} started a ${displayDuration} focus session 🎯`)
       });
     }
     
-    showNotification(`🎯 Focus session started! Duration: ${selectedDuration} minutes`);
+    const displayDuration = selectedDuration === 0.17 ? '10 seconds' : `${selectedDuration} minutes`;
+    showNotification(`🎯 Focus session started! Duration: ${displayDuration}`);
+  };
+
+  const cancelFocusSession = async () => {
+    if (!activeSession || !user || !userData) return;
+
+    setShowCancelConfirm(false);
+
+    // Update session as cancelled
+    await updateDoc(doc(db, "focusSessions", activeSession.sessionId), {
+      status: "cancelled",
+      endTime: serverTimestamp(),
+      "result.rewardGranted": false,
+      "result.droppedCard": null
+    });
+
+    // Add to activity feed
+    if (currentMatch) {
+      await updateDoc(doc(db, "matches", currentMatch.matchId), {
+        activityFeed: arrayUnion(`${userData.displayName} quit their focus session early ❌ (No rewards)`)
+      });
+    }
+
+    showNotification("❌ Session cancelled. No rewards earned.");
   };
 
   const handleSessionComplete = async () => {
@@ -606,6 +632,34 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Cancel Session Confirmation */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border-2 border-red-500">
+            <h2 className="text-2xl font-bold mb-4">🛑 Stop Studying?</h2>
+            <p className="text-gray-300 mb-2">Are you sure you want to quit this focus session?</p>
+            <div className="bg-red-500/20 border border-red-500 rounded p-3 mb-6">
+              <p className="text-red-400 font-bold">⚠️ Warning: You will NOT receive any rewards!</p>
+              <p className="text-sm text-gray-300 mt-1">Complete the session to earn your card.</p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1 bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition font-bold"
+              >
+                Keep Studying
+              </button>
+              <button 
+                onClick={cancelFocusSession}
+                className="flex-1 bg-red-500 px-4 py-2 rounded hover:bg-red-600 transition font-bold"
+              >
+                Quit (No Rewards)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* End Match Confirmation */}
       {showEndMatchConfirm && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -752,7 +806,7 @@ export default function Dashboard() {
                         {uid === user?.uid && <span className="ml-2 text-yellow-400">(You)</span>}
                         {activeSessions[uid] && (
                           <div className="text-xs text-green-400 mt-1">
-                            🎯 Focusing ({activeSessions[uid].durationMin}min)
+                            🎯 Focusing ({activeSessions[uid].durationMin === 0.17 ? '10sec' : `${activeSessions[uid].durationMin}min`})
                           </div>
                         )}
                       </div>
@@ -841,7 +895,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-8xl font-bold mb-6 text-green-400">{sessionTimeRemaining}</div>
                 <p className="text-gray-300 text-xl mb-2">Session in progress... Stay focused!</p>
-                <p className="text-sm text-gray-400 mb-6">Duration: {activeSession.durationMin} minutes</p>
+                <p className="text-sm text-gray-400 mb-6">Duration: {activeSession.durationMin === 0.17 ? '10 seconds' : `${activeSession.durationMin} minutes`}</p>
                 <div className="max-w-md mx-auto">
                   <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-r from-green-400 to-blue-500 animate-pulse" style={{width: '100%'}} />
@@ -851,11 +905,28 @@ export default function Dashboard() {
                   <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can't do both!</p>
                   <p className="text-sm text-gray-300 mt-1">Complete this session to unlock battle features and earn a card reward.</p>
                 </div>
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="mt-6 bg-red-500/80 hover:bg-red-600 px-6 py-3 rounded-lg font-bold transition"
+                >
+                  🛑 Stop Studying (No Rewards)
+                </button>
               </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-gray-300 mb-4">Choose your focus duration and earn rewards!</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <button
+                    onClick={() => setSelectedDuration(0.17)}
+                    className={`px-4 py-4 rounded font-bold transition ${
+                      selectedDuration === 0.17
+                        ? "bg-blue-500 scale-105 shadow-lg"
+                        : "bg-gray-700 hover:bg-gray-600"
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">10</div>
+                    <div className="text-xs">seconds</div>
+                  </button>
                   {[20, 40, 67].map(duration => (
                     <button
                       key={duration}
