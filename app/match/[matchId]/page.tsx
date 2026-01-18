@@ -1,61 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { auth, db } from "../../firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  onSnapshot,
-  serverTimestamp,
+import {
   arrayUnion,
-  increment,
-  query,
   collection,
+  doc,
+  getDoc,
+  increment,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
   where,
-  setDoc
 } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
 import { drawCard, getCard, Card } from "../../../lib/cards";
 import { openChest, determineChestReward, getChest, ChestType } from "../../../lib/chests";
 import { EMOTES, Emote } from "../../../lib/emotes";
-
-interface UserData {
-  uid: string;
-  displayName: string;
-  photoURL: string;
-  inventory: {
-    hand: string[];
-    collectionCounts: Record<string, number>;
-  };
-  stats: { totalMinutes: number; sessionsCount: number };
-}
-
-interface MatchData {
-  matchId: string;
-  type: "duo" | "group";
-  createdAt: any;
-  endsAt: any;
-  status: "active" | "finished";
-  participants: string[];
-  hp: Record<string, number>;
-  alive: Record<string, boolean>;
-  buffs: Record<string, any[]>;
-  eventSeq: number;
-  activityFeed: string[];
-}
-
-interface FocusSessionData {
-  sessionId: string;
-  uid: string;
-  matchId: string;
-  durationMin: 0.17 | 20 | 40 | 67;
-  startServerTime: any;
-  endTime?: any;
-  status: "running" | "completed" | "failed" | "cancelled";
-  result: { rewardGranted: boolean; droppedCard: string | null };
-}
+import { FocusDuration, FocusSessionData, MatchData, UserData } from "../../../lib/types";
+import { useTimedMessage } from "../../../lib/useTimedMessage";
 
 export default function MatchPage() {
   const router = useRouter();
@@ -73,10 +39,10 @@ export default function MatchPage() {
   const [activeSessions, setActiveSessions] = useState<Record<string, FocusSessionData>>({});
   
   // UI States
-  const [selectedDuration, setSelectedDuration] = useState<0.17 | 20 | 40 | 67>(20);
+  const [selectedDuration, setSelectedDuration] = useState<FocusDuration>(20);
   const [selectedTarget, setSelectedTarget] = useState<string>("");
   const [rewardCard, setRewardCard] = useState<Card | null>(null);
-  const [notification, setNotification] = useState<string>("");
+  const { message: notification, showMessage: showNotification } = useTimedMessage();
   const [showEmotes, setShowEmotes] = useState(false);
   const [showChestReward, setShowChestReward] = useState(false);
   const [chestReward, setChestReward] = useState<{ chest: ChestType; cards: Card[] } | null>(null);
@@ -244,11 +210,6 @@ export default function MatchPage() {
 
     return () => clearInterval(interval);
   }, [activeSession]);
-
-  const showNotification = (message: string) => {
-    setNotification(message);
-    setTimeout(() => setNotification(""), 3000);
-  };
 
   const sendEmote = async (emote: Emote) => {
     if (!user || !userData || !matchData) return;

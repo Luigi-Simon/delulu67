@@ -1,70 +1,40 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
+import {
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
   onSnapshot,
   query,
+  setDoc,
+  updateDoc,
   where,
-  serverTimestamp,
-  arrayUnion,
-  getDocs
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { getCard } from "../../lib/cards";
 import { generateUniqueMatchId } from "../../lib/matchId";
-
-interface UserData {
-  uid: string;
-  displayName: string;
-  photoURL: string;
-  friendCode: string;
-  friends: string[];
-  presence: string;
-  stats: { totalMinutes: number; sessionsCount: number };
-  inventory: {
-    hand: string[];
-    collectionCounts: Record<string, number>;
-  };
-}
-
-interface MatchData {
-  matchId: string;
-  type: "duo" | "group";
-  createdAt: any;
-  endsAt: any;
-  status: "active" | "finished";
-  participants: string[];
-  hp: Record<string, number>;
-}
-
-interface FriendData {
-  uid: string;
-  displayName: string;
-  photoURL: string;
-  presence: string;
-}
+import { DashboardUserData, FriendData, MatchData, MatchType } from "../../lib/types";
+import { useTimedMessage } from "../../lib/useTimedMessage";
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<UserData | null>(null);
+  const [userData, setUserData] = useState<DashboardUserData | null>(null);
   const [currentMatch, setCurrentMatch] = useState<MatchData | null>(null);
   const [friends, setFriends] = useState<FriendData[]>([]);
   const [loading, setLoading] = useState(true);
   
   // UI States
   const [showCreateMatch, setShowCreateMatch] = useState(false);
-  const [matchType, setMatchType] = useState<"duo" | "group">("duo");
+  const [matchType, setMatchType] = useState<MatchType>("duo");
   const [joinMatchId, setJoinMatchId] = useState("");
   const [addFriendCode, setAddFriendCode] = useState("");
-  const [notification, setNotification] = useState<string>("");
+  const { message: notification, showMessage: showNotification } = useTimedMessage();
 
   // Auth listener
   useEffect(() => {
@@ -174,11 +144,6 @@ export default function Dashboard() {
     };
   }, [user]);
 
-  const showNotification = (message: string) => {
-    setNotification(message);
-    setTimeout(() => setNotification(""), 3000);
-  };
-
   const handleLogout = async () => {
     await signOut(auth);
     router.push("/");
@@ -208,7 +173,7 @@ export default function Dashboard() {
       buffs: { [user.uid]: [] },
       eventSeq: 0,
       activityFeed: [`${userData.displayName} created the match`]
-    } as any;
+    };
 
     await setDoc(doc(db, "matches", matchId), matchData);
     setShowCreateMatch(false);
