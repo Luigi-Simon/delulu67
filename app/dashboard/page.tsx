@@ -709,8 +709,8 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Match Info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Current Match */}
-          {currentMatch ? (
+          {/* Current Match - Hidden during focus session */}
+          {!activeSession && currentMatch ? (
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold">⚔️ Active Match</h2>
@@ -821,17 +821,27 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Focus Session */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
+          {/* Focus Session - Full screen when active */}
+          <div className={`bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20 ${activeSession ? 'lg:col-span-3' : ''}`}>
             <h2 className="text-2xl font-bold mb-4">🎯 Focus Session</h2>
             
             {activeSession ? (
               <div className="text-center">
-                <div className="text-6xl font-bold mb-4 text-green-400">{sessionTimeRemaining}</div>
-                <p className="text-gray-300 text-lg mb-2">Session in progress... Stay focused!</p>
-                <p className="text-sm text-gray-400">Duration: {activeSession.durationMin} minutes</p>
-                <div className="mt-4 w-full h-3 bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-green-400 to-blue-500 animate-pulse" style={{width: '100%'}} />
+                <div className="mb-6">
+                  <h3 className="text-3xl font-bold mb-2">📚 Focus Mode Active</h3>
+                  <p className="text-gray-300">Battle features are disabled. Study hard to earn your reward!</p>
+                </div>
+                <div className="text-8xl font-bold mb-6 text-green-400">{sessionTimeRemaining}</div>
+                <p className="text-gray-300 text-xl mb-2">Session in progress... Stay focused!</p>
+                <p className="text-sm text-gray-400 mb-6">Duration: {activeSession.durationMin} minutes</p>
+                <div className="max-w-md mx-auto">
+                  <div className="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-green-400 to-blue-500 animate-pulse" style={{width: '100%'}} />
+                  </div>
+                </div>
+                <div className="mt-8 p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg">
+                  <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can't do both!</p>
+                  <p className="text-sm text-gray-300 mt-1">Complete this session to unlock battle features and earn a card reward.</p>
                 </div>
               </div>
             ) : (
@@ -868,7 +878,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Right Column - Cards */}
+        {/* Right Column - Cards - Hidden during focus session */}
+        {!activeSession && (
         <div className="space-y-6">
           {/* Stats */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
@@ -945,7 +956,7 @@ export default function Dashboard() {
           </div>
 
           {/* Target Selection */}
-          {currentMatch && !activeSession && currentMatch.participants.length > 1 && (
+          {currentMatch && currentMatch.participants.length > 1 && (
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
               <h2 className="text-xl font-bold mb-4">🎯 Select Target</h2>
               <div className="space-y-2">
@@ -967,6 +978,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
