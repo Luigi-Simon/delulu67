@@ -2,48 +2,9 @@
 
 import { useState } from "react";
 import { db } from "../app/firebase";
-import { doc, writeBatch, collection, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, writeBatch, collection } from "firebase/firestore";
+import type { DashboardUserData, FocusSessionData, MatchData } from "../lib/types";
 
-// --- 1. Define Your Schema Types (Matches your exact spec) ---
-interface User {
-  uid: string;
-  displayName: string;
-  photoURL: string;
-  friendCode: string;
-  friends: string[];
-  presence: "Studying" | "Slacking" | "Offline";
-  stats: { totalMinutes: number; sessionsCount: number };
-  inventory: {
-    hand: string[];
-    collectionCounts: Record<string, number>;
-  };
-}
-
-interface Match {
-  matchId: string;
-  type: "duo" | "group";
-  createdAt: any; 
-  endsAt: any;    
-  status: "active" | "finished";
-  participants: string[];
-  hp: Record<string, number>;
-  alive: Record<string, boolean>;
-  buffs: Record<string, any[]>;
-  eventSeq: number;
-  activityFeed: string[];
-}
-
-interface FocusSession {
-  sessionId: string;
-  uid: string;
-  matchId: string;
-  durationMin: 20 | 40 | 67;
-  startServerTime: any;
-  status: "running" | "completed" | "failed" | "cancelled";
-  result: { rewardGranted: boolean; droppedCard: string | null };
-}
-
-// --- 2. The Component ---
 export default function SeedButton() {
   const [loading, setLoading] = useState(false);
 
@@ -59,7 +20,7 @@ export default function SeedButton() {
       const userRef1 = doc(db, "users", "user_1");
       const userRef2 = doc(db, "users", "user_2");
 
-      const userData1: User = {
+      const userData1: DashboardUserData = {
         uid: "user_1",
         displayName: "HackWizard",
         photoURL: "https://api.dicebear.com/7.x/avataaars/svg?seed=Wizard",
@@ -73,7 +34,7 @@ export default function SeedButton() {
         }
       };
 
-      const userData2: User = {
+      const userData2: DashboardUserData = {
         uid: "user_2",
         displayName: "CodeNinja",
         photoURL: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ninja",
@@ -93,7 +54,7 @@ export default function SeedButton() {
       // --- B. Create Match ---
       const matchRef = doc(db, "matches", "match_alpha");
       
-      const matchData: Match = {
+      const matchData: MatchData = {
         matchId: "match_alpha",
         type: "duo",
         createdAt: now,
@@ -126,7 +87,7 @@ export default function SeedButton() {
 
       // --- D. Create Focus Session ---
       const sessionRef = doc(db, "focusSessions", "sess_01");
-      const sessionData: FocusSession = {
+      const sessionData: FocusSessionData = {
         sessionId: "sess_01",
         uid: "user_1",
         matchId: "match_alpha",

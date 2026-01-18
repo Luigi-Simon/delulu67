@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { auth, db } from "../../firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import {
@@ -20,8 +20,21 @@ import { useRouter, useParams } from "next/navigation";
 import { drawCard, getCard, Card } from "../../../lib/cards";
 import { openChest, determineChestReward, getChest, ChestType } from "../../../lib/chests";
 import { EMOTES, Emote } from "../../../lib/emotes";
-import { FocusDuration, FocusSessionData, MatchData, UserData } from "../../../lib/types";
+import { FocusDuration, FocusSessionData, MatchData, TimestampLike, UserData } from "../../../lib/types";
 import { useTimedMessage } from "../../../lib/useTimedMessage";
+
+const getTimestampMillis = (value: TimestampLike | undefined) => {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+    return value.toDate().getTime();
+  }
+  return null;
+};
 
 export default function MatchPage() {
   const router = useRouter();
@@ -36,7 +49,6 @@ export default function MatchPage() {
   const [timeRemaining, setTimeRemaining] = useState<string>("");
   const [sessionTimeRemaining, setSessionTimeRemaining] = useState<string>("");
   const [participantNames, setParticipantNames] = useState<Record<string, string>>({});
-  const [activeSessions, setActiveSessions] = useState<Record<string, FocusSessionData>>({});
   
   // UI States
   const [selectedDuration, setSelectedDuration] = useState<FocusDuration>(20);
@@ -118,29 +130,6 @@ export default function MatchPage() {
     loadParticipantNames();
   }, [matchData]);
 
-  // Load all active sessions in match
-  useEffect(() => {
-    if (!matchData) return;
-
-    const sessionsRef = collection(db, "focusSessions");
-    const q = query(
-      sessionsRef,
-      where("matchId", "==", matchData.matchId),
-      where("status", "==", "running")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sessions: Record<string, FocusSessionData> = {};
-      snapshot.docs.forEach(doc => {
-        const session = { ...doc.data(), sessionId: doc.id } as FocusSessionData;
-        sessions[session.uid] = session;
-      });
-      setActiveSessions(sessions);
-    });
-
-    return () => unsubscribe();
-  }, [matchData]);
-
   // Load active focus session
   useEffect(() => {
     if (!user) return;
@@ -170,7 +159,7 @@ export default function MatchPage() {
 
     const interval = setInterval(() => {
       const now = new Date().getTime();
-      const endTime = matchData.endsAt?.toDate?.()?.getTime() || now;
+      const endTime = getTimestampMillis(matchData.endsAt) ?? now;
       const diff = endTime - now;
 
       if (diff <= 0) {
@@ -186,20 +175,57 @@ export default function MatchPage() {
     return () => clearInterval(interval);
   }, [matchData]);
 
+  const handleSessionComplete = useCallback(async () => {
+    if (!activeSession || !user || !userData) return;
+
+    const drawnCard = drawCard(activeSession.durationMin);
+    
+    await updateDoc(doc(db, "focusSessions", activeSession.sessionId), {
+      status: "completed",
+      endTime: serverTimestamp(),
+      "result.rewardGranted": true,
+      "result.droppedCard": drawnCard.id
+    });
+
+    const userRef = doc(db, "users", user.uid);
+    const currentCount = userData.inventory.collectionCounts[drawnCard.id] || 0;
+    
+    await updateDoc(userRef, {
+      "stats.totalMinutes": increment(activeSession.durationMin),
+      "stats.sessionsCount": increment(1),
+      [`inventory.collectionCounts.${drawnCard.id}`]: currentCount + 1
+    });
+
+    if (userData.inventory.hand.length < 3) {
+      await updateDoc(userRef, {
+        "inventory.hand": arrayUnion(drawnCard.id)
+      });
+    }
+
+    if (matchData) {
+      await updateDoc(doc(db, "matches", matchData.matchId), {
+        activityFeed: arrayUnion(`${userData.displayName} completed focus session and earned ${drawnCard.emoji} ${drawnCard.name}!`)
+      });
+    }
+
+    setRewardCard(drawnCard);
+    setTimeout(() => setRewardCard(null), 5000);
+  }, [activeSession, matchData, user, userData]);
+
   // Session timer
   useEffect(() => {
     if (!activeSession) return;
 
     const interval = setInterval(() => {
       const now = new Date().getTime();
-      const startTime = activeSession.startServerTime?.toDate?.()?.getTime() || now;
+      const startTime = getTimestampMillis(activeSession.startServerTime) ?? now;
       const duration = activeSession.durationMin * 60 * 1000;
       const endTime = startTime + duration;
       const diff = endTime - now;
 
       if (diff <= 0) {
         setSessionTimeRemaining("Session Complete!");
-        handleSessionComplete();
+        void handleSessionComplete();
         clearInterval(interval);
       } else {
         const minutes = Math.floor(diff / (1000 * 60));
@@ -209,7 +235,7 @@ export default function MatchPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, handleSessionComplete]);
 
   const sendEmote = async (emote: Emote) => {
     if (!user || !userData || !matchData) return;
@@ -278,43 +304,6 @@ export default function MatchPage() {
     showNotification("❌ Session cancelled. No rewards earned.");
   };
 
-  const handleSessionComplete = async () => {
-    if (!activeSession || !user || !userData) return;
-
-    const drawnCard = drawCard(activeSession.durationMin);
-    
-    await updateDoc(doc(db, "focusSessions", activeSession.sessionId), {
-      status: "completed",
-      endTime: serverTimestamp(),
-      "result.rewardGranted": true,
-      "result.droppedCard": drawnCard.id
-    });
-
-    const userRef = doc(db, "users", user.uid);
-    const currentCount = userData.inventory.collectionCounts[drawnCard.id] || 0;
-    
-    await updateDoc(userRef, {
-      "stats.totalMinutes": increment(activeSession.durationMin),
-      "stats.sessionsCount": increment(1),
-      [`inventory.collectionCounts.${drawnCard.id}`]: currentCount + 1
-    });
-
-    if (userData.inventory.hand.length < 3) {
-      await updateDoc(userRef, {
-        "inventory.hand": arrayUnion(drawnCard.id)
-      });
-    }
-
-    if (matchData) {
-      await updateDoc(doc(db, "matches", matchData.matchId), {
-        activityFeed: arrayUnion(`${userData.displayName} completed focus session and earned ${drawnCard.emoji} ${drawnCard.name}!`)
-      });
-    }
-
-    setRewardCard(drawnCard);
-    setTimeout(() => setRewardCard(null), 5000);
-  };
-
   const endMatch = async () => {
     if (!user || !userData || !matchData) return;
 
@@ -327,7 +316,7 @@ export default function MatchPage() {
     for (let i = 0; i < rankings.length; i++) {
       const participant = rankings[i];
       const placement = i + 1;
-      const chestType = determineChestReward(placement, rankings.length, 1);
+      const chestType = determineChestReward(placement, rankings.length);
       const cards = openChest(chestType);
 
       const userRef = doc(db, "users", participant.uid);
@@ -335,7 +324,7 @@ export default function MatchPage() {
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const updates: any = {};
+        const updates: Record<string, number | ReturnType<typeof arrayUnion>> = {};
 
         cards.forEach(card => {
           const currentCount = userData.inventory?.collectionCounts?.[card.id] || 0;
@@ -659,7 +648,7 @@ export default function MatchPage() {
               </div>
             </div>
             <div className="mt-8 p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg max-w-md mx-auto">
-              <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can't do both!</p>
+              <p className="text-yellow-300 font-bold">⚠️ Study or Play - You can&apos;t do both!</p>
               <p className="text-sm text-gray-300 mt-1">Complete this session to unlock battle features and earn a card reward.</p>
             </div>
             <button

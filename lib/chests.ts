@@ -72,8 +72,7 @@ export const CHESTS: Record<ChestType, Chest> = {
 // Determine chest type based on match performance
 export function determineChestReward(
   placement: number,
-  totalPlayers: number,
-  matchDuration: number // in hours
+  totalPlayers: number
 ): ChestType {
   // Winner gets best chest
   if (placement === 1) {

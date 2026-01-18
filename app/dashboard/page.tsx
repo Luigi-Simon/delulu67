@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import {
@@ -15,18 +15,22 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import Image, { type ImageLoader } from "next/image";
 import { useRouter } from "next/navigation";
 import { getCard } from "../../lib/cards";
 import { generateUniqueMatchId } from "../../lib/matchId";
 import { DashboardUserData, FriendData, MatchData, MatchType } from "../../lib/types";
 import { useTimedMessage } from "../../lib/useTimedMessage";
 
+const remoteImageLoader: ImageLoader = ({ src }) => src;
+const fallbackAvatarSrc = "/file.svg";
+
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<DashboardUserData | null>(null);
   const [currentMatch, setCurrentMatch] = useState<MatchData | null>(null);
-  const [friends, setFriends] = useState<FriendData[]>([]);
+  const [friendsById, setFriendsById] = useState<Record<string, FriendData>>({});
   const [loading, setLoading] = useState(true);
   
   // UI States
@@ -35,6 +39,15 @@ export default function Dashboard() {
   const [joinMatchId, setJoinMatchId] = useState("");
   const [addFriendCode, setAddFriendCode] = useState("");
   const { message: notification, showMessage: showNotification } = useTimedMessage();
+  const friendIds = useMemo(() => userData?.friends ?? [], [userData?.friends]);
+  const friends = useMemo(() => {
+    if (friendIds.length === 0) {
+      return [];
+    }
+    return friendIds
+      .map((uid) => friendsById[uid])
+      .filter((friend): friend is FriendData => Boolean(friend));
+  }, [friendIds, friendsById]);
 
   // Auth listener
   useEffect(() => {
@@ -88,34 +101,35 @@ export default function Dashboard() {
 
   // Load friends with real-time presence
   useEffect(() => {
-    if (!userData || !userData.friends || userData.friends.length === 0) {
-      setFriends([]);
+    if (friendIds.length === 0) {
       return;
     }
 
     const unsubscribes: (() => void)[] = [];
-    const friendsData: Record<string, FriendData> = {};
 
-    userData.friends.forEach(friendUid => {
+    friendIds.forEach((friendUid) => {
       const unsubscribe = onSnapshot(doc(db, "users", friendUid), (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          friendsData[friendUid] = {
+        if (!snapshot.exists()) {
+          return;
+        }
+        const data = snapshot.data();
+        setFriendsById((prev) => ({
+          ...prev,
+          [friendUid]: {
             uid: friendUid,
             displayName: data.displayName || "Unknown",
             photoURL: data.photoURL || "",
-            presence: data.presence || "offline"
-          };
-          setFriends(Object.values(friendsData));
-        }
+            presence: data.presence || "offline",
+          },
+        }));
       });
       unsubscribes.push(unsubscribe);
     });
 
     return () => {
-      unsubscribes.forEach(unsub => unsub());
+      unsubscribes.forEach((unsub) => unsub());
     };
-  }, [userData?.friends]);
+  }, [friendIds]);
 
   // Set user presence to online on mount
   useEffect(() => {
@@ -304,7 +318,15 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <img src={userData.photoURL} alt="avatar" className="w-16 h-16 rounded-full border-4 border-yellow-400" />
+            <Image
+              loader={remoteImageLoader}
+              unoptimized
+              src={userData.photoURL || fallbackAvatarSrc}
+              alt="avatar"
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-full border-4 border-yellow-400"
+            />
             <div>
               <h1 className="text-3xl font-bold">{userData.displayName}</h1>
               <div className="flex items-center gap-2">
@@ -472,7 +494,15 @@ export default function Dashboard() {
               <div className="space-y-3 max-h-64 overflow-y-auto">
                 {friends.map(friend => (
                   <div key={friend.uid} className="flex items-center gap-3 bg-black/30 p-3 rounded">
-                    <img src={friend.photoURL} alt={friend.displayName} className="w-10 h-10 rounded-full" />
+                    <Image
+                      loader={remoteImageLoader}
+                      unoptimized
+                      src={friend.photoURL || fallbackAvatarSrc}
+                      alt={friend.displayName}
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full"
+                    />
                     <div className="flex-1">
                       <p className="font-bold">{friend.displayName}</p>
                       <p className="text-xs text-gray-400 flex items-center gap-1">

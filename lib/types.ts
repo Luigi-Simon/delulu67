@@ -1,6 +1,9 @@
+import type { FieldValue } from "firebase/firestore";
+
 export type MatchType = "duo" | "group";
 export type MatchStatus = "active" | "finished";
 export type FocusDuration = 0.17 | 20 | 40 | 67;
+export type TimestampLike = { toDate?: () => Date } | Date | FieldValue | null;
 
 export interface UserStats {
   totalMinutes: number;
@@ -36,8 +39,8 @@ export interface FriendData {
 export interface MatchData {
   matchId: string;
   type: MatchType;
-  createdAt: any;
-  endsAt: any;
+  createdAt: TimestampLike;
+  endsAt: TimestampLike;
   status: MatchStatus;
   participants: string[];
   hp: Record<string, number>;
@@ -52,8 +55,8 @@ export interface FocusSessionData {
   uid: string;
   matchId: string;
   durationMin: FocusDuration;
-  startServerTime: any;
-  endTime?: any;
+  startServerTime: TimestampLike;
+  endTime?: TimestampLike;
   status: "running" | "completed" | "failed" | "cancelled";
   result: { rewardGranted: boolean; droppedCard: string | null };
 }
