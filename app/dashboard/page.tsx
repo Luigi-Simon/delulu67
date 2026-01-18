@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { drawCard, getCard, Card } from "../../lib/cards";
 import { openChest, determineChestReward, getChest, ChestType } from "../../lib/chests";
 import { EMOTES, Emote } from "../../lib/emotes";
+import { generateUniqueMatchId } from "../../lib/matchId";
 
 interface UserData {
   uid: string;
@@ -261,7 +262,7 @@ export default function Dashboard() {
   const createMatch = async () => {
     if (!user || !userData) return;
 
-    const matchId = `match_${Date.now()}`;
+    const matchId = generateUniqueMatchId();
     const now = new Date();
     const endsAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
 
@@ -726,7 +727,14 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-gray-300 mb-2">Match ID: <span className="font-mono bg-black/30 px-2 py-1 rounded">{currentMatch.matchId}</span></p>
+              <div className="mb-4">
+                <p className="text-xs text-gray-400 mb-1">Match ID</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
+                    {currentMatch.matchId}
+                  </span>
+                </div>
+              </div>
               <p className="text-sm text-gray-300 mb-4">⏰ Time Remaining: <span className="font-bold text-yellow-400">{timeRemaining}</span></p>
               
               <div className="space-y-2">
