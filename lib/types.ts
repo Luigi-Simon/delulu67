@@ -36,8 +36,8 @@ export interface FriendData {
 export interface MatchData {
   matchId: string;
   type: MatchType;
-  createdAt: unknown;
-  endsAt: unknown;
+  createdAt: any;
+  endsAt: any;
   status: MatchStatus;
   participants: string[];
   hp: Record<string, number>;
@@ -52,8 +52,8 @@ export interface FocusSessionData {
   uid: string;
   matchId: string;
   durationMin: FocusDuration;
-  startServerTime: unknown;
-  endTime?: unknown;
+  startServerTime: any;
+  endTime?: any;
   status: "running" | "completed" | "failed" | "cancelled";
   result: { rewardGranted: boolean; droppedCard: string | null };
 }

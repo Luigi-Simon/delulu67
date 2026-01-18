@@ -55,7 +55,7 @@ export default function Dashboard() {
     const userRef = doc(db, "users", user.uid);
     const unsubscribe = onSnapshot(userRef, (snapshot) => {
       if (snapshot.exists()) {
-        setUserData(snapshot.data() as UserData);
+        setUserData(snapshot.data() as DashboardUserData);
         setLoading(false);
       }
     });
